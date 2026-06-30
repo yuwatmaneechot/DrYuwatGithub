@@ -246,11 +246,17 @@ async function pushToSheets(silent = false) {
         'Content-Type': 'text/plain'
       }
     });
-    SYNC_SETTINGS.lastSynced = new Date().toISOString();
-    saveSyncSettings();
-    updateSyncUI();
-    if (!silent) showToast('Data pushed to Google Sheets');
-    return true;
+    if (!res.ok) throw new Error('HTTP error ' + res.status);
+    const resJson = await res.json();
+    if (resJson && resJson.status === 'success') {
+      SYNC_SETTINGS.lastSynced = new Date().toISOString();
+      saveSyncSettings();
+      updateSyncUI();
+      if (!silent) showToast('Data pushed to Google Sheets');
+      return true;
+    } else {
+      throw new Error(resJson ? resJson.message : 'Failed to save to database');
+    }
   } catch (e) {
     console.error(e);
     updateSyncUI('Sync Failed');
@@ -274,6 +280,9 @@ async function pullFromSheets(silent = false) {
     const res = await fetch(SYNC_SETTINGS.url);
     if (!res.ok) throw new Error('HTTP error ' + res.status);
     const data = await res.json();
+    if (data && data.status === 'error') {
+      throw new Error(data.message);
+    }
     if (data && data.patients) {
       DB = data;
       saveDataLocalOnly();
