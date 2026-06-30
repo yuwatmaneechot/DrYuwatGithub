@@ -75,7 +75,8 @@ textarea{resize:vertical;min-height:80px;}
 @keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
 .modal-close{float:right;background:var(--border);border:none;cursor:pointer;width:30px;height:30px;border-radius:50%;font-size:18px;display:flex;align-items:center;justify-content:center;color:var(--muted);margin-bottom:10px;}
 .modal h2{font-size:18px;font-weight:700;margin-bottom:4px;}
-.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--bold);color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;z-index:200;pointer-events:none;animation:fadeIn .2s;}
+.toast{position:fixed;bottom:95px;left:50%;transform:translateX(-50%);background:#10B981;color:#fff;padding:12px 24px;border-radius:30px;font-size:14px;font-weight:600;z-index:2000;pointer-events:none;box-shadow:0 4px 12px rgba(16,185,129,0.3);animation:toastFadeIn .25s cubic-bezier(0.16, 1, 0.3, 1);display:flex;align-items:center;gap:8px;}
+@keyframes toastFadeIn{from{bottom:80px;opacity:0}to{bottom:95px;opacity:1}}
 .pt-detail-hdr{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
 .pt-detail-avatar{width:52px;height:52px;border-radius:50%;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;flex-shrink:0;}
 .pt-detail-info h2{font-size:18px;font-weight:700;}
@@ -232,7 +233,7 @@ function followupsForCase(cid){return DB.followups.filter(f=>f.caseId===cid);}
 // ── Google Sheets Sync Functions ──
 async function pushToSheets(silent = false) {
   if (!SYNC_SETTINGS.url) {
-    if (!silent) showToast('Please set Google Apps Script URL first');
+    if (!silent) showToast('กรุณาตั้งค่าลิงก์ Google Apps Script ในหน้า Settings ก่อนครับ ⚙️');
     return false;
   }
   if (_isSyncing) return false;
@@ -257,15 +258,15 @@ async function pushToSheets(silent = false) {
       SYNC_SETTINGS.lastSynced = new Date().toISOString();
       saveSyncSettings();
       updateSyncUI();
-      if (!silent) showToast('Data pushed to Google Sheets');
+      if (!silent) showToast('ซิงก์ข้อมูลขึ้น Google Sheets สำเร็จ! ✅');
       return true;
     } else {
-      throw new Error(resJson ? resJson.message : 'Failed to save to database');
+      throw new Error(resJson ? resJson.message : 'ไม่สามารถบันทึกข้อมูลลงฐานข้อมูลได้');
     }
   } catch (e) {
     console.error(e);
     updateSyncUI('Sync Failed');
-    if (!silent) showToast('Sync failed: ' + e.message);
+    if (!silent) showToast('ซิงก์ข้อมูลล้มเหลว: ' + e.message + ' ❌');
     return false;
   } finally {
     _isSyncing = false;
@@ -275,7 +276,7 @@ async function pushToSheets(silent = false) {
 
 async function pullFromSheets(silent = false) {
   if (!SYNC_SETTINGS.url) {
-    if (!silent) showToast('Please set Google Apps Script URL first');
+    if (!silent) showToast('กรุณาตั้งค่าลิงก์ Google Apps Script ในหน้า Settings ก่อนครับ ⚙️');
     return false;
   }
   if (_isSyncing) return false;
@@ -295,15 +296,15 @@ async function pullFromSheets(silent = false) {
       saveSyncSettings();
       updateSyncUI();
       setView(_currentView, _currentPatientId);
-      if (!silent) showToast('Data loaded from Google Sheets');
+      if (!silent) showToast('ดึงข้อมูลจาก Google Sheets สำเร็จ! ✅');
       return true;
     } else {
-      throw new Error('Invalid data format');
+      throw new Error('รูปแบบข้อมูลจากระบบไม่ถูกต้อง');
     }
   } catch (e) {
     console.error(e);
     updateSyncUI('Sync Failed');
-    if (!silent) showToast('Pull failed: ' + e.message);
+    if (!silent) showToast('ดึงข้อมูลล้มเหลว: ' + e.message + ' ❌');
     return false;
   } finally {
     _isSyncing = false;
@@ -384,7 +385,7 @@ function updateHeaderSyncStatus() {
 function manualHeaderSync() {
   if (!SYNC_SETTINGS.url) {
     setView('settings');
-    showToast('Please set Google Apps Script URL in Settings');
+    showToast('กรุณาตั้งค่าลิงก์ Google Apps Script ในหน้า Settings ก่อนครับ ⚙️');
   } else {
     pullFromSheets();
   }
@@ -475,7 +476,7 @@ function markDone(id){
   f.done=true;saveData();
   if(_currentView==='followup')renderDashboard();
   else if(_currentView==='patient')renderPatientDetail(_currentPatientId);
-  showToast('Marked as done');
+  showToast('บันทึกการนัดหมายเสร็จสิ้นแล้ว ✅');
 }
 function rescheduleFU(id){
   const f=DB.followups.find(x=>x.id===id);
@@ -496,7 +497,7 @@ function saveReschedule(id){
   f.date=d;saveData();closeModal();
   if(_currentView==='followup')renderDashboard();
   else if(_currentView==='patient')renderPatientDetail(_currentPatientId);
-  showToast('Rescheduled');
+  showToast('เลื่อนวันนัดหมายเรียบร้อยแล้ว ✅');
 }
 
 // ── Patients ──
@@ -618,7 +619,7 @@ function deleteCase(id){
   if(!confirm('Delete this case and all its follow-ups?'))return;
   DB.cases=DB.cases.filter(c=>c.id!==id);
   DB.followups=DB.followups.filter(f=>f.caseId!==id);
-  saveData();renderPatientDetail(_currentPatientId);showToast('Case deleted');
+  saveData();renderPatientDetail(_currentPatientId);showToast('ลบข้อมูลเคสสำเร็จ 🗑️');
 }
 
 // ── Patient Form ──
@@ -646,7 +647,7 @@ function openPatientForm(id){
 }
 function savePatient(id){
   const name=document.getElementById('pf_name').value.trim();
-  if(!name){showToast('Name is required');return;}
+  if(!name){showToast('กรุณาระบุชื่อคนไข้ ⚠️');return;}
   const hn=document.getElementById('pf_hn').value.trim();
   const phone=document.getElementById('pf_phone').value.trim();
   const clinic=document.getElementById('pf_clinic').value.trim();
@@ -661,7 +662,7 @@ function savePatient(id){
   saveData();closeModal();
   if(_currentView==='patients')renderPatients();
   else if(_currentView==='patient')renderPatientDetail(_currentPatientId);
-  showToast(id?'Patient updated':'Patient added');
+  showToast(id?'อัปเดตข้อมูลคนไข้สำเร็จ ✅':'เพิ่มข้อมูลคนไข้รายใหม่สำเร็จ ✅');
 }
 function deletePatient(id){
   if(!confirm('Delete this patient and all their cases and follow-ups?'))return;
@@ -669,7 +670,7 @@ function deletePatient(id){
   DB.followups=DB.followups.filter(f=>!cids.includes(f.caseId));
   DB.cases=DB.cases.filter(c=>c.patientId!==id);
   DB.patients=DB.patients.filter(p=>p.id!==id);
-  saveData();closeModal();setView('patients');showToast('Patient deleted');
+  saveData();closeModal();setView('patients');showToast('ลบข้อมูลคนไข้สำเร็จ 🗑️');
 }
 
 // ── History Form ──
@@ -687,7 +688,7 @@ function openHistoryForm(pid){
 function saveHistory(pid){
   const p=getPatient(pid);if(!p)return;
   p.notes=document.getElementById('hf_text').value.trim();
-  saveData();closeModal();renderPatientDetail(pid);showToast('History saved');
+  saveData();closeModal();renderPatientDetail(pid);showToast('บันทึกประวัติการรักษาสำเร็จ ✅');
 }
 
 // ── Case Form ──
@@ -811,7 +812,7 @@ function saveCase(cid){
       xrays
     });
   });
-  if(!valid||implants.length===0){showToast('Tooth position is required');return;}
+  if(!valid||implants.length===0){showToast('กรุณาระบุตำแหน่งซี่ฟัน ⚠️');return;}
   if(cid){
     const c=getCase(cid);if(!c)return;
     c.patientId=pid;c.clinic=clinic;c.notes=notes;c.implants=implants;
@@ -823,7 +824,7 @@ function saveCase(cid){
     if(im.brand&&!DB.brands.includes(im.brand))DB.brands.push(im.brand);
     if(im.labName&&!DB.labNames.includes(im.labName))DB.labNames.push(im.labName);
   });
-  saveData();closeModal();renderPatientDetail(_currentPatientId||pid);showToast(cid?'Case updated':'Case added');
+  saveData();closeModal();renderPatientDetail(_currentPatientId||pid);showToast(cid?'อัปเดตข้อมูลเคสสำเร็จ ✅':'บันทึกเคสรากเทียมใหม่เรียบร้อยแล้ว ✅');
 }
 
 // ── Followup Form ──
@@ -863,7 +864,7 @@ function saveFollowup(cid,fuId){
   const implantIdx=toothEl?parseInt(toothEl.value)||0:0;
   const c=getCase(cid);
   const tooth=c&&c.implants&&c.implants[implantIdx]?c.implants[implantIdx].tooth:'';
-  if(!date){showToast('Date is required');return;}
+  if(!date){showToast('กรุณาระบุวันนัดหมาย ⚠️');return;}
   if(fuId){
     const fu=DB.followups.find(f=>f.id===fuId);if(!fu)return;
     fu.type=type;fu.customType=custom;fu.date=date;fu.notes=notes;fu.implantIdx=implantIdx;fu.tooth=tooth;
@@ -873,7 +874,7 @@ function saveFollowup(cid,fuId){
   saveData();closeModal();
   if(_currentView==='followup')renderDashboard();
   else if(_currentView==='patient')renderPatientDetail(_currentPatientId);
-  showToast(fuId?'Updated':'Appointment added');
+  showToast(fuId?'อัปเดตนัดหมายสำเร็จ ✅':'เพิ่มการนัดหมายสำเร็จ ✅');
 }
 function deleteFU(id){
   if(!confirm('Delete this appointment?'))return;
@@ -881,7 +882,7 @@ function deleteFU(id){
   saveData();closeModal();
   if(_currentView==='followup')renderDashboard();
   else if(_currentView==='patient')renderPatientDetail(_currentPatientId);
-  showToast('Appointment deleted');
+  showToast('ลบนัดหมายสำเร็จ 🗑️');
 }
 
 // ── X-rays ──
@@ -900,7 +901,7 @@ function handleXRayFiles(files){
       c.implants[implantIdx].xrays=c.implants[implantIdx].xrays||[];
       c.implants[implantIdx].xrays.push({dataUrl:e.target.result,name:file.name,date:todayStr()});
       pending--;
-      if(pending===0){saveData();renderPatientDetail(_currentPatientId);showToast('X-ray added');}
+      if(pending===0){saveData();renderPatientDetail(_currentPatientId);showToast('เพิ่มรูป X-ray สำเร็จ ✅');}
     };
     reader.readAsDataURL(file);
   });
@@ -909,7 +910,7 @@ function deleteImplantXRay(cid,implantIdx,xrayIdx){
   if(!confirm('Delete this X-ray?'))return;
   const c=getCase(cid);if(!c)return;
   c.implants[implantIdx].xrays.splice(xrayIdx,1);
-  saveData();renderPatientDetail(_currentPatientId);showToast('X-ray deleted');
+  saveData();renderPatientDetail(_currentPatientId);showToast('ลบรูป X-ray สำเร็จ 🗑️');
 }
 function openXRayViewer(cid,implantIdx,xrayIdx){
   const c=getCase(cid);if(!c)return;
@@ -1044,7 +1045,7 @@ function removeTag(key,idx,containerId){
 function clearAll(){
   if(!confirm('Delete ALL data? This cannot be undone!'))return;
   DB={patients:[],cases:[],followups:[],clinics:[],brands:[],labNames:[],stocks:[],movementLogs:[]};
-  saveData();renderSettings();showToast('All data deleted');
+  saveData();renderSettings();showToast('ลบข้อมูลทั้งหมดเรียบร้อยแล้ว 🗑️');
 }
 
 // ── Stock Inventory Logic ──
@@ -1222,12 +1223,12 @@ function saveNewStockItem() {
   const unit = document.getElementById('sf_unit').value.trim() || 'pcs';
   
   if (!size) {
-    showToast('Item name/size is required');
+    showToast('กรุณาระบุชื่อหรือขนาดวัสดุ ⚠️');
     return;
   }
   
   if (DB.stocks.some(s => s.size.toLowerCase() === size.toLowerCase())) {
-    showToast('An item with this name/size already exists');
+    showToast('มีรายการวัสดุนี้ในคลังแล้ว ⚠️');
     return;
   }
   
@@ -1254,7 +1255,7 @@ function saveNewStockItem() {
   saveData();
   closeModal();
   renderInventoryView();
-  showToast('Stock item registered');
+  showToast('ลงทะเบียนวัสดุในคลังสำเร็จ ✅');
 }
 
 function openStockMovementModal(size, type) {
@@ -1301,7 +1302,7 @@ function submitStockMovement(size, type) {
   const remark = document.getElementById('smf_remark').value.trim();
   
   if (isNaN(qty) || qty < 0) {
-    showToast('Please enter a valid quantity');
+    showToast('กรุณาระบุจำนวนที่ถูกต้อง ⚠️');
     return;
   }
   
@@ -1331,7 +1332,7 @@ function submitStockMovement(size, type) {
   saveData();
   closeModal();
   renderInventoryView();
-  showToast('Stock updated successfully');
+  showToast('บันทึกรายการเคลื่อนไหวคลังสำเร็จ ✅');
 }
 
 function deleteStockItem(size) {
@@ -1342,7 +1343,7 @@ function deleteStockItem(size) {
   
   saveData();
   renderInventoryView();
-  showToast('Stock item deleted');
+  showToast('ลบรายการวัสดุออกจากคลังแล้ว 🗑️');
 }
 
 function openMovementHistoryModal() {
@@ -1405,7 +1406,7 @@ function importJSON(file){
       const data=JSON.parse(e.target.result);
       if(!data.patients)throw new Error('Invalid format');
       DB={patients:data.patients||[],cases:data.cases||[],followups:data.followups||[],clinics:data.clinics||[],brands:data.brands||[],labNames:data.labNames||[],stocks:data.stocks||[],movementLogs:data.movementLogs||[]};
-      saveData();setView('followup');showToast('Data imported successfully');
+      saveData();setView('followup');showToast('นำเข้าข้อมูลสำเร็จ ✅');
     }catch(err){alert('Import failed: '+err.message);}
   };
   reader.readAsText(file);
