@@ -141,6 +141,10 @@ textarea{resize:vertical;min-height:80px;}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
     Patients
   </button>
+  <button id="navInventory" onclick="setView('inventory')">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+    Inventory
+  </button>
   <button id="navStats" onclick="setView('stats')">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
     Statistics
@@ -165,7 +169,7 @@ const ABUTMENT_TYPE_SUGGEST = ['Stock Abutment','Custom Abutment (CAD/CAM)','Ti-
 const CROWN_MATERIAL_SUGGEST = ['Zirconia','PFM (Porcelain Fused to Metal)','E-max (Lithium Disilicate)','Full Ceramic','Acrylic (Temporary)','Composite'];
 const FU_TYPES = ['Extraction / Socket check','Pre-implant assessment','Suture removal / Wound check','Stage 2 uncovery','Impression','Try-in','Final restoration','Recall / Follow-up','Other'];
 
-let DB = {patients:[],cases:[],followups:[],clinics:[],brands:[],labNames:[]};
+let DB = {patients:[],cases:[],followups:[],clinics:[],brands:[],labNames:[],stocks:[],movementLogs:[]};
 let SYNC_SETTINGS = { url: '', autoSync: false, lastSynced: '' };
 let _currentView = 'followup';
 let _currentPatientId = null;
@@ -190,6 +194,8 @@ function loadData(){
   if(!DB.clinics)DB.clinics=[];
   if(!DB.brands)DB.brands=[];
   if(!DB.labNames)DB.labNames=[];
+  if(!DB.stocks)DB.stocks=[];
+  if(!DB.movementLogs)DB.movementLogs=[];
 }
 
 function loadSyncSettings() {
@@ -382,7 +388,7 @@ function openModal(html){document.getElementById('modalRoot').innerHTML=html;}
 // ── Nav ──
 function setView(v,id){
   _currentView=v;
-  ['followup','patients','stats','settings'].forEach(n=>{
+  ['followup','patients','inventory','stats','settings'].forEach(n=>{
     const btn=document.getElementById('nav'+n.charAt(0).toUpperCase()+n.slice(1));
     if(btn)btn.classList.toggle('active',n===v);
   });
@@ -391,6 +397,7 @@ function setView(v,id){
   if(v==='followup'){fab.style.display='flex';sub.textContent='Appointments / Follow-up';renderDashboard();}
   else if(v==='patients'){fab.style.display='flex';sub.textContent='Patients';renderPatients();}
   else if(v==='patient'&&id){_currentPatientId=id;fab.style.display='flex';sub.textContent='Patient Detail';renderPatientDetail(id);}
+  else if(v==='inventory'){fab.style.display='flex';sub.textContent='Stock Inventory';renderInventoryView();}
   else if(v==='stats'){fab.style.display='none';sub.textContent='Statistics';renderStats();}
   else if(v==='settings'){fab.style.display='none';sub.textContent='Settings';renderSettings();}
   updateHeaderSyncStatus();
@@ -399,6 +406,7 @@ function setView(v,id){
 function fabAction(){
   if(_currentView==='followup'||_currentView==='patients')openPatientForm('');
   else if(_currentView==='patient'&&_currentPatientId)openCaseForm(_currentPatientId,'');
+  else if(_currentView==='inventory')openAddStockItemModal();
 }
 
 // ── Dashboard ──
@@ -1021,8 +1029,338 @@ function removeTag(key,idx,containerId){
 }
 function clearAll(){
   if(!confirm('Delete ALL data? This cannot be undone!'))return;
-  DB={patients:[],cases:[],followups:[],clinics:[],brands:[],labNames:[]};
+  DB={patients:[],cases:[],followups:[],clinics:[],brands:[],labNames:[],stocks:[],movementLogs:[]};
   saveData();renderSettings();showToast('All data deleted');
+}
+
+// ── Stock Inventory Logic ──
+let _stockCategoryFilter = 'all';
+let _stockSearchQuery = '';
+
+function renderInventoryView() {
+  const viewEl = document.getElementById('view');
+  
+  // Calculate stock stats
+  const totalItems = DB.stocks.length;
+  const lowStockCount = DB.stocks.filter(s => s.balance <= 2).length;
+  const totalMovements = DB.movementLogs.length;
+  
+  viewEl.innerHTML = `
+    <div class="stat-row">
+      <div class="stat-card ok"><div class="num">${totalItems}</div><div class="lbl">Total Items</div></div>
+      <div class="stat-card danger"><div class="num">${lowStockCount}</div><div class="lbl">Low Stock</div></div>
+      <div class="stat-card ok"><div class="num">${totalMovements}</div><div class="lbl">Movements</div></div>
+    </div>
+    
+    <div class="sec-hdr">
+      <h2>Stock Master</h2>
+      <button class="btn primary sm" onclick="openAddStockItemModal()">+ Add Item</button>
+    </div>
+    
+    <div class="card" style="padding: 12px; margin-bottom: 12px;">
+      <div class="search-wrap" style="margin-bottom: 8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="stockSearchInput" placeholder="Search items by name..." oninput="onStockSearch(this.value)" value="${escapeHtml(_stockSearchQuery)}">
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;">
+        <button class="btn sm ${_stockCategoryFilter === 'all' ? 'primary' : 'ghost'}" onclick="setStockCatFilter('all')">All</button>
+        <button class="btn sm ${_stockCategoryFilter === 'implant' ? 'primary' : 'ghost'}" onclick="setStockCatFilter('implant')">Implants</button>
+        <button class="btn sm ${_stockCategoryFilter === 'abutment' ? 'primary' : 'ghost'}" onclick="setStockCatFilter('abutment')">Abutments</button>
+        <button class="btn sm ${_stockCategoryFilter === 'bone' ? 'primary' : 'ghost'}" onclick="setStockCatFilter('bone')">Bone Grafts</button>
+        <button class="btn sm ${_stockCategoryFilter === 'membrane' ? 'primary' : 'ghost'}" onclick="setStockCatFilter('membrane')">Membranes</button>
+      </div>
+    </div>
+    
+    <div id="stockItemsContainer"></div>
+    
+    <div class="sec-hdr" style="margin-top:20px;">
+      <h2>Recent Movements</h2>
+      <button class="btn ghost sm" onclick="openMovementHistoryModal()">View All Logs</button>
+    </div>
+    <div id="recentMovementsContainer"></div>
+  `;
+  
+  renderStockItemsList();
+  renderRecentMovementsList();
+}
+
+function onStockSearch(val) {
+  _stockSearchQuery = val;
+  renderStockItemsList();
+}
+
+function setStockCatFilter(cat) {
+  _stockCategoryFilter = cat;
+  renderInventoryView();
+}
+
+function renderStockItemsList() {
+  const container = document.getElementById('stockItemsContainer');
+  if (!container) return;
+  
+  const q = _stockSearchQuery.toLowerCase();
+  let filtered = DB.stocks.filter(s => {
+    const matchCat = (_stockCategoryFilter === 'all' || s.category === _stockCategoryFilter);
+    const matchSearch = (s.size.toLowerCase().includes(q) || s.category.toLowerCase().includes(q));
+    return matchCat && matchSearch;
+  });
+  
+  if (filtered.length === 0) {
+    container.innerHTML = `<div class="empty" style="padding: 20px 0;"><p>No stock items found</p></div>`;
+    return;
+  }
+  
+  container.innerHTML = filtered.map(item => {
+    return `<div class="card" style="margin-bottom: 8px; padding: 12px 14px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <span class="badge" style="background:var(--primary-light); color:var(--primary); font-size:10px; padding:1px 6px; margin-bottom:4px; text-transform:uppercase;">${item.category}</span>
+          <h3 style="font-size:14px; font-weight:600; color:var(--bold); margin: 2px 0;">${escapeHtml(item.size)}</h3>
+          <div style="font-size:11px; color:var(--muted)">Last Update: ${fmtDateShort(item.lastUpdate) || 'N/A'}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:18px; font-weight:700; color:${item.balance <= 2 ? 'var(--danger)' : 'var(--bold)'}">${item.balance} <span style="font-size:11px; font-weight:500; color:var(--muted);">${escapeHtml(item.unit || 'pcs')}</span></div>
+          ${item.balance <= 2 ? '<span class="badge badge-danger" style="font-size:9px; padding:1px 4px; margin-top:2px;">Low Stock</span>' : ''}
+        </div>
+      </div>
+      <div style="display:flex; gap:6px; margin-top:10px; border-top:1px solid var(--border); padding-top:8px;">
+        <button class="btn sm primary" style="flex:1; justify-content:center; background:#10B981; border-color:#10B981;" onclick="openStockMovementModal('${escapeHtml(item.size)}', 'IN')">+ Stock In</button>
+        <button class="btn sm primary" style="flex:1; justify-content:center; background:#EF4444; border-color:#EF4444;" onclick="openStockMovementModal('${escapeHtml(item.size)}', 'OUT')">- Stock Out</button>
+        <button class="btn sm ghost" style="padding: 6px 10px;" onclick="openStockMovementModal('${escapeHtml(item.size)}', 'ADJUST')" title="Adjust Balance">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button class="btn sm danger" style="padding: 6px 10px;" onclick="deleteStockItem('${escapeHtml(item.size)}')" title="Delete Item">
+          ✕
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderRecentMovementsList() {
+  const container = document.getElementById('recentMovementsContainer');
+  if (!container) return;
+  
+  if (DB.movementLogs.length === 0) {
+    container.innerHTML = `<div class="empty" style="padding: 20px 0;"><p>No stock movement logs yet</p></div>`;
+    return;
+  }
+  
+  const recent = [...DB.movementLogs].sort((a,b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 5);
+  
+  container.innerHTML = recent.map(m => {
+    let badgeClass = 'badge-ok';
+    if (m.type === 'OUT') badgeClass = 'badge-danger';
+    if (m.type === 'ADJUST') badgeClass = 'badge-warn';
+    
+    return `<div class="fu-item" style="padding: 10px 12px; margin-bottom: 6px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <div style="font-weight:600; font-size:13px;">${escapeHtml(m.size)}</div>
+          <div style="font-size:11px; color:var(--muted); margin-top:2px;">${m.remark ? escapeHtml(m.remark) : 'No remark'}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:11px; color:var(--muted);">${fmtDateShort(m.timestamp)}</div>
+          <span class="badge ${badgeClass}" style="font-size:10px; padding:1px 6px; margin-top:2px;">${m.type}: ${m.qty}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openAddStockItemModal() {
+  openModal(`<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <button class="modal-close" onclick="closeModal()">×</button>
+    <h2>Add Stock Item</h2>
+    
+    <label>Item Name / Size *</label>
+    <input type="text" id="sf_size" placeholder="e.g. Straumann BLX 4.1x10mm">
+    
+    <label>Category *</label>
+    <select id="sf_category">
+      <option value="implant">Implant</option>
+      <option value="abutment">Abutment</option>
+      <option value="bone">Bone Graft</option>
+      <option value="membrane">Membrane</option>
+      <option value="other">Other</option>
+    </select>
+    
+    <div class="row2">
+      <div>
+        <label>Initial Balance</label>
+        <input type="number" id="sf_balance" value="0" min="0">
+      </div>
+      <div>
+        <label>Unit</label>
+        <input type="text" id="sf_unit" value="pcs" placeholder="pcs, box, etc.">
+      </div>
+    </div>
+    
+    <div style="height:12px"></div>
+    <button class="btn primary block" onclick="saveNewStockItem()">Save Item</button>
+  </div></div>`);
+}
+
+function saveNewStockItem() {
+  const size = document.getElementById('sf_size').value.trim();
+  const category = document.getElementById('sf_category').value;
+  const balance = parseInt(document.getElementById('sf_balance').value) || 0;
+  const unit = document.getElementById('sf_unit').value.trim() || 'pcs';
+  
+  if (!size) {
+    showToast('Item name/size is required');
+    return;
+  }
+  
+  if (DB.stocks.some(s => s.size.toLowerCase() === size.toLowerCase())) {
+    showToast('An item with this name/size already exists');
+    return;
+  }
+  
+  const newItem = {
+    size,
+    balance,
+    category,
+    unit,
+    lastUpdate: todayStr()
+  };
+  
+  DB.stocks.push(newItem);
+  
+  if (balance > 0) {
+    DB.movementLogs.push({
+      timestamp: todayStr(),
+      size,
+      type: 'ADJUST',
+      qty: balance,
+      remark: 'Initial stock register'
+    });
+  }
+  
+  saveData();
+  closeModal();
+  renderInventoryView();
+  showToast('Stock item registered');
+}
+
+function openStockMovementModal(size, type) {
+  const item = DB.stocks.find(s => s.size === size);
+  if (!item) return;
+  
+  let title = '';
+  let labelText = '';
+  let btnClass = 'primary';
+  
+  if (type === 'IN') {
+    title = 'Stock In';
+    labelText = 'Quantity to Add';
+  } else if (type === 'OUT') {
+    title = 'Stock Out';
+    labelText = 'Quantity to Subtract';
+    btnClass = 'danger';
+  } else {
+    title = 'Adjust Balance';
+    labelText = 'New Balance';
+  }
+  
+  openModal(`<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <button class="modal-close" onclick="closeModal()">×</button>
+    <h2>${title}</h2>
+    <div style="font-size:13px; color:var(--muted); margin-bottom:12px;">Item: <strong>${escapeHtml(size)}</strong> (Current: ${item.balance} ${item.unit})</div>
+    
+    <label>${labelText} *</label>
+    <input type="number" id="smf_qty" min="0" value="1">
+    
+    <label>Remark / Notes</label>
+    <input type="text" id="smf_remark" placeholder="e.g., Restock, Patient session">
+    
+    <div style="height:12px"></div>
+    <button class="btn ${btnClass} block" onclick="submitStockMovement('${escapeHtml(size)}', '${type}')">Submit</button>
+  </div></div>`);
+}
+
+function submitStockMovement(size, type) {
+  const item = DB.stocks.find(s => s.size === size);
+  if (!item) return;
+  
+  const qty = parseInt(document.getElementById('smf_qty').value);
+  const remark = document.getElementById('smf_remark').value.trim();
+  
+  if (isNaN(qty) || qty < 0) {
+    showToast('Please enter a valid quantity');
+    return;
+  }
+  
+  let newBalance = item.balance;
+  if (type === 'IN') {
+    newBalance += qty;
+  } else if (type === 'OUT') {
+    if (qty > item.balance) {
+      if (!confirm('Warning: Out quantity exceeds current balance. Proceed?')) return;
+    }
+    newBalance -= qty;
+  } else if (type === 'ADJUST') {
+    newBalance = qty;
+  }
+  
+  item.balance = newBalance;
+  item.lastUpdate = todayStr();
+  
+  DB.movementLogs.push({
+    timestamp: todayStr(),
+    size,
+    type,
+    qty,
+    remark
+  });
+  
+  saveData();
+  closeModal();
+  renderInventoryView();
+  showToast('Stock updated successfully');
+}
+
+function deleteStockItem(size) {
+  if (!confirm(`Are you sure you want to delete "${size}" from stock inventory?`)) return;
+  
+  DB.stocks = DB.stocks.filter(s => s.size !== size);
+  DB.movementLogs = DB.movementLogs.filter(m => m.size !== size);
+  
+  saveData();
+  renderInventoryView();
+  showToast('Stock item deleted');
+}
+
+function openMovementHistoryModal() {
+  const logs = [...DB.movementLogs].sort((a,b) => b.timestamp.localeCompare(a.timestamp));
+  
+  const logsHtml = logs.length === 0
+    ? '<div class="empty"><p>No movement history logs</p></div>'
+    : logs.map(m => {
+        let badgeClass = 'badge-ok';
+        if (m.type === 'OUT') badgeClass = 'badge-danger';
+        if (m.type === 'ADJUST') badgeClass = 'badge-warn';
+        return `<div class="fu-item" style="padding: 10px 12px; margin-bottom: 6px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+              <div style="font-weight:600; font-size:13px;">${escapeHtml(m.size)}</div>
+              <div style="font-size:11px; color:var(--muted); margin-top:2px;">${m.remark ? escapeHtml(m.remark) : 'No remark'}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:11px; color:var(--muted);">${fmtDate(m.timestamp)}</div>
+              <span class="badge ${badgeClass}" style="font-size:10px; padding:1px 6px; margin-top:2px;">${m.type}: ${m.qty}</span>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+      
+  openModal(`<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-height:80vh;">
+    <button class="modal-close" onclick="closeModal()">×</button>
+    <h2>Stock Movement History</h2>
+    <div style="margin-top:12px; overflow-y:auto; max-height:65vh;">
+      ${logsHtml}
+    </div>
+  </div></div>`);
 }
 
 // ── Export / Import ──
@@ -1052,7 +1390,7 @@ function importJSON(file){
     try{
       const data=JSON.parse(e.target.result);
       if(!data.patients)throw new Error('Invalid format');
-      DB={patients:data.patients||[],cases:data.cases||[],followups:data.followups||[],clinics:data.clinics||[],brands:data.brands||[],labNames:data.labNames||[]};
+      DB={patients:data.patients||[],cases:data.cases||[],followups:data.followups||[],clinics:data.clinics||[],brands:data.brands||[],labNames:data.labNames||[],stocks:data.stocks||[],movementLogs:data.movementLogs||[]};
       saveData();setView('followup');showToast('Data imported successfully');
     }catch(err){alert('Import failed: '+err.message);}
   };
