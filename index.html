@@ -249,6 +249,11 @@ async function pushToSheets(silent = false) {
     if (!res.ok) throw new Error('HTTP error ' + res.status);
     const resJson = await res.json();
     if (resJson && resJson.status === 'success') {
+      if (resJson.database && resJson.database.patients) {
+        DB = resJson.database;
+        saveDataLocalOnly();
+        setView(_currentView, _currentPatientId);
+      }
       SYNC_SETTINGS.lastSynced = new Date().toISOString();
       saveSyncSettings();
       updateSyncUI();
